@@ -1,5 +1,6 @@
 var bunyan = require('bunyan'),
     has = require('lodash.has'),
+    omit = require('lodash.omit'),
     set = require('lodash.set'),
     useragent = require('useragent'),
     uuid = require('node-uuid'),
@@ -31,63 +32,71 @@ module.exports.errorLogger = function (opts) {
 
     // default format
     format = opts.format || ":remote-address :incoming :method :url HTTP/:http-version :status-code :res-headers[content-length] :referer :user-agent[family] :user-agent[major].:user-agent[minor] :user-agent[os] :response-time ms";
-    delete opts.format; // don't pass it to bunyan
-    (typeof format != 'function') && (format = compile(format));
 
-    opts.hasOwnProperty('parseUA') && (parseUA = opts.parseUA, delete opts.parseUA);
+    if (typeof format != 'function') {
+        format = compile(format);
+    }
+
+    if (opts.hasOwnProperty('parseUA')) {
+        parseUA = opts.parseUA;
+    }
 
     if (opts.immediate) {
         immediate = opts.immediate;
-        delete opts.immediate;
     }
 
     if (opts.levelFn) {
         levelFn = opts.levelFn;
-        delete opts.levelFn;
     }
 
     if (opts.excludes) {
         excludes = opts.excludes;
-        delete opts.excludes;
     }
 
     if (opts.obfuscate) {
         obfuscate = opts.obfuscate;
         obfuscatePlaceholder = opts.obfuscatePlaceholder || '[HIDDEN]';
-        delete opts.obfuscate;
-        delete opts.obfuscatePlaceholder;
     }
 
     if (opts.includesFn) {
         includesFn = opts.includesFn;
-        delete opts.includesFn;
     }
 
 
     if (opts.genReqId) {
         genReqId = typeof genReqId == 'function' ? opts.genReqId : defaultGenReqId;
-    }else if (opts.hasOwnProperty('genReqId')) {
+    } else if (opts.hasOwnProperty('genReqId')) {
         genReqId = false;
     }
 
     return function (err, req, res, next) {
         var startTime = process.hrtime();
-
+        var loggerOpt = omit(opts, [
+          'format',
+          'parseUA',
+          'immediate',
+          'levelFn',
+          'excludes',
+          'obfuscate',
+          'obfuscatePlaceholder',
+          'includesFn'
+        ]);
         var app = req.app || res.app;
 
         if (!logger) {
-            opts.name = (opts.name || app.settings.shortname || app.settings.name || app.settings.title || 'express');
-            opts.serializers = opts.serializers || {};
-            opts.serializers.req = opts.serializers.req || bunyan.stdSerializers.req;
-            opts.serializers.res = opts.serializers.res || bunyan.stdSerializers.res;
-            err && (opts.serializers.err = opts.serializers.err || bunyan.stdSerializers.err);
-            logger = bunyan.createLogger(opts);
+            loggerOpt.name = (loggerOpt.name || app.settings.shortname || app.settings.name || app.settings.title || 'express');
+            loggerOpt.serializers = loggerOpt.serializers || {};
+            loggerOpt.serializers.req = loggerOpt.serializers.req || bunyan.stdSerializers.req;
+            loggerOpt.serializers.res = loggerOpt.serializers.res || bunyan.stdSerializers.res;
+            err && (loggerOpt.serializers.err = loggerOpt.serializers.err || bunyan.stdSerializers.err);
+            logger = bunyan.createLogger(loggerOpt);
         }
 
         var requestId;
 
-        if (genReqId)
-          requestId = genReqId(req);
+        if (genReqId) {
+            requestId = genReqId(req);
+        }
 
         var childLogger = requestId !== undefined ? logger.child({req_id: requestId}) : logger;
         req.log = childLogger;
